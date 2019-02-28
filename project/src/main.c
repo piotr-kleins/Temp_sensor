@@ -12,6 +12,7 @@ char msg[50];
 void UART_Init();
 void I2C_Init();
 float read_temp();
+float read_humid();
 
 int main(void)
 {
@@ -24,12 +25,14 @@ int main(void)
 	UART_Init();
 	I2C_Init();
 
-	float temp = 10;
-	float humid = 23.13;
+	float temp = 1.1;
+	float humid = 2.2;
 
 	while(1)
 	{
 		temp = read_temp();
+
+		humid = read_humid();
 
 		sprintf(msg, "Temp: %0.02f, Wilg: %.02f \r\n", temp, humid);
 
@@ -96,20 +99,12 @@ float read_temp()
 	float temp_final = 0.0;
 	uint8_t init_trans = 0x01;
 	uint8_t data_read[2] = {0};
-	HAL_StatusTypeDef status;
+	//HAL_StatusTypeDef status;
 
-	HAL_Delay(100);
-	status = HAL_I2C_Mem_Write(&i2c, SENS_ADDR, 0x0F, 1, &init_trans, 1, HAL_MAX_DELAY);
-	HAL_Delay(100);
+	// Enable reading from sensor
+	HAL_I2C_Mem_Write(&i2c, SENS_ADDR, 0x0F, 1, &init_trans, 1, HAL_MAX_DELAY);
 
-//	HAL_I2C_Mem_Read(&i2c, SENS_ADDR, 0xFC, 1, data_read, 1, HAL_MAX_DELAY);
-//	HAL_I2C_Mem_Read(&i2c, SENS_ADDR, 0xFD, 1, data_read+1, 1, HAL_MAX_DELAY);
-//	HAL_I2C_Mem_Read(&i2c, SENS_ADDR, 0xFE, 1, data_read+2, 1, HAL_MAX_DELAY);
-//	HAL_I2C_Mem_Read(&i2c, SENS_ADDR, 0xFF, 1, data_read+3, 1, HAL_MAX_DELAY);
-//	uint8_t i = 0;
-//	for(i=0; i<2; i++){
-//		HAL_I2C_Mem_Read(&i2c, SENS_ADDR, 0x00 + i, 1, data_read + i, 1, HAL_MAX_DELAY);
-//	}
+	// Read 2 registers containing temperature data
 	HAL_I2C_Mem_Read(&i2c, SENS_ADDR, 0x00, 1, data_read, 1, HAL_MAX_DELAY);
 	HAL_I2C_Mem_Read(&i2c, SENS_ADDR, 0x01, 1, data_read + 1, 1, HAL_MAX_DELAY);
 
@@ -118,5 +113,26 @@ float read_temp()
 	temp_final = (temp_final/pow(2,16)) * 165 - 40;
 
 	return temp_final;
+}
+
+float read_humid()
+{
+	int16_t humid_data = 0;
+	float humid_final = 0.0;
+	uint8_t init_trans = 0x01;
+	uint8_t data_read[2] = {0};
+
+	// Enable reading from sensor
+	HAL_I2C_Mem_Write(&i2c, SENS_ADDR, 0x0F, 1, &init_trans, 1, HAL_MAX_DELAY);
+
+	// Read 2 registers containing humidity data
+	HAL_I2C_Mem_Read(&i2c, SENS_ADDR, 0x00, 1, data_read, 1, HAL_MAX_DELAY);
+	HAL_I2C_Mem_Read(&i2c, SENS_ADDR, 0x01, 1, data_read + 1, 1, HAL_MAX_DELAY);
+
+	humid_data = ((int16_t)data_read[0]) + ((int16_t)data_read[1] << 8);
+	humid_final = (float)humid_data;
+	humid_final = (humid_final/pow(2,16)) * 100;
+
+	return humid_final;
 }
 
