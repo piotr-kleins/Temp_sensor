@@ -39,33 +39,40 @@
 #define HUMID_ALARM_PIN			GPIO_PIN_9
 
 UART_HandleTypeDef uart;
+TIM_HandleTypeDef tim2;
 
 char msg[50];
 char temp_displ[10];
 char humid_displ[10];
 
+float temp = 1.1;
+float humid = 2.2;
 float temp_th = 25.0;				// Temperature threshold
 float humid_th = 60.0;				// Relative humidity threshold
+
+/*
+ * operation_mode informs about current program state:
+ * 0 - read data and check possible alarms
+ * 1 - read data, check possible alarms and send collected data to display and uart
+ * 2 - configure temperature and humidity threshold
+ */
+
+volatile uint8_t operation_mode = 0;				// Program state
 
 void UART_Init();
 void I2C_Init();
 void SPI_Init();
+void TIM2_Init();
 void GPIO_Alarm_Init();
-
-TIM_HandleTypeDef tim2;
 
 void TIM2_IRQHandler(void)
 {
- HAL_TIM_IRQHandler(&tim2);
+	HAL_TIM_IRQHandler(&tim2);
 }
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
-	HAL_StatusTypeDef status;
-	uint16_t size = 0;
-	size = sprintf(msg, "Temp: %0.02f, Wilg: %.02f \r\n", 20.1, 32.31);
-	status = HAL_UART_Transmit_IT(&uart, (uint8_t*)msg, size);
-	size = size+1;
+	operation_mode = 1;
 }
 
 
@@ -77,31 +84,14 @@ int main(void)
 	__HAL_RCC_GPIOB_CLK_ENABLE();			//GPIOB --> i2c
 	__HAL_RCC_GPIOC_CLK_ENABLE();			//GPIOC --> SPI
 	__HAL_RCC_SPI1_CLK_ENABLE();
+	__HAL_RCC_TIM2_CLK_ENABLE();
 
 	UART_Init();
 	I2C_Init();
 	SPI_Init();
+	TIM2_Init();
 	GPIO_Alarm_Init();
 
-
-	__HAL_RCC_TIM2_CLK_ENABLE();
-	tim2.Instance = TIM2;
-	tim2.Init.Period = 1000 - 1;
-	tim2.Init.Prescaler = 8000 - 1;
-	tim2.Init.ClockDivision = 0;
-	tim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-	tim2.Init.RepetitionCounter = 0;
-	tim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-	HAL_TIM_Base_Init(&tim2);
-	HAL_NVIC_EnableIRQ(TIM2_IRQn);
-
-	//HAL_NVIC_EnableIRQ(USART2_IRQn);
-	HAL_TIM_Base_Start_IT(&tim2);
-
-
-
-	float temp = 1.1;
-	float humid = 2.2;
 
 	lcd_init();
 	lcd_clear();
@@ -110,18 +100,34 @@ int main(void)
 
 	while(1)
 	{
-		temp = read_temp();
-		humid = read_humid();
+		if(operation_mode == 0 || operation_mode == 1)
+		{
+			temp = read_temp();
+			humid = read_humid();
 
-		sprintf(msg, "Temp: %0.02f, Wilg: %.02f \r\n", temp, humid);
-		sprintf(temp_displ, "%0.02f C", temp);
-		sprintf(humid_displ, "%0.02f %%", humid);
+			if(temp > temp_th) HAL_GPIO_WritePin(GPIOC, TEMP_ALARM_PIN, GPIO_PIN_SET);
+			else HAL_GPIO_WritePin(GPIOC, TEMP_ALARM_PIN, GPIO_PIN_RESET);
 
-		lcd_text_display(1, 40, temp_displ);
-		lcd_text_display(4, 40, humid_displ);
+			if(humid> humid_th) HAL_GPIO_WritePin(GPIOC, HUMID_ALARM_PIN, GPIO_PIN_SET);
+			else HAL_GPIO_WritePin(GPIOC, HUMID_ALARM_PIN, GPIO_PIN_RESET);
 
-		//HAL_UART_Transmit(&uart, (uint8_t*)msg, strlen(msg), 100);
-		HAL_Delay(1000);
+			if(operation_mode == 1)
+			{
+				sprintf(msg, "Temp: %0.02f, Wilg: %.02f \r\n", temp, humid);
+				sprintf(temp_displ, "%0.02f C", temp);
+				sprintf(humid_displ, "%0.02f %%", humid);
+
+				lcd_text_display(1, 40, temp_displ);
+				lcd_text_display(4, 40, humid_displ);
+
+				HAL_UART_Transmit(&uart, (uint8_t*)msg, strlen(msg), 100);
+
+				operation_mode = 0;
+			}
+		}
+		else if(operation_mode == 2){
+			;
+		}
 	}
 }
 
@@ -149,8 +155,8 @@ void UART_Init()
 	uart.Init.OverSampling = UART_OVERSAMPLING_16;
 	uart.Init.Mode = UART_MODE_TX_RX;
 
-	HAL_NVIC_EnableIRQ(USART2_IRQn);
 	HAL_UART_Init(&uart);
+	HAL_Delay(100);
 
 }
 
@@ -175,6 +181,7 @@ void I2C_Init()
 	i2c.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
 	i2c.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
 	HAL_I2C_Init(&i2c);
+	HAL_Delay(100);
 
 }
 
@@ -212,6 +219,24 @@ void SPI_Init()
 	HAL_SPI_Init(&spi);
 
 	__HAL_SPI_ENABLE(&spi);
+	HAL_Delay(100);
+}
+
+void TIM2_Init(){
+
+
+	tim2.Instance = TIM2;
+	tim2.Init.Period = 1000 - 1;
+	tim2.Init.Prescaler = 8000 - 1;
+	tim2.Init.ClockDivision = 0;
+	tim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+	tim2.Init.RepetitionCounter = 0;
+	tim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+
+	HAL_TIM_Base_Init(&tim2);
+	HAL_NVIC_EnableIRQ(TIM2_IRQn);
+	HAL_TIM_Base_Start_IT(&tim2);
+	HAL_Delay(100);
 }
 
 void GPIO_Alarm_Init(){
@@ -227,7 +252,15 @@ void GPIO_Alarm_Init(){
 	HAL_GPIO_WritePin(GPIOC, TEMP_ALARM_PIN|HUMID_ALARM_PIN, GPIO_PIN_RESET);
 }
 
-
+//void TIM2_IRQHandler(void)
+//{
+//	HAL_TIM_IRQHandler(&tim2);
+//}
+//
+//void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+//{
+//	operation_mode = 1;
+//}
 
 
 
