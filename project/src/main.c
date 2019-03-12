@@ -47,7 +47,7 @@ char humid_displ[10];
 
 float temp = 1.1;
 float humid = 2.2;
-float temp_th = 25.0;				// Temperature threshold
+float temp_th = 26.0;				// Temperature threshold
 float humid_th = 60.0;				// Relative humidity threshold
 
 /*
@@ -124,9 +124,6 @@ int main(void)
 
 				operation_mode = 0;
 			}
-		}
-		else if(operation_mode == 2){
-			;
 		}
 	}
 }
